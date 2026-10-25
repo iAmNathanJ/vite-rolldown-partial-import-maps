@@ -14,7 +14,8 @@ PNPM="${PNPM:-pnpm}"
 if [ ! -d "$DEST/.git" ]; then
   git clone --branch "$BRANCH" "$REPO" "$DEST"
 fi
-git -C "$DEST" fetch --quiet origin "$BRANCH"
+# Fetch by URL: an existing checkout may have a different origin.
+git -C "$DEST" fetch --quiet "$REPO" "$BRANCH"
 git -C "$DEST" checkout --quiet "$COMMIT"
 
 cd "$DEST"
