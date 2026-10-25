@@ -1,0 +1,58 @@
+// How we alias a subset of chunks today, with stock Vite 8 and stock Rolldown.
+import path from 'node:path';
+
+import {
+  ALIASED,
+  appDir,
+  codeSplitting,
+  resolveOutDir,
+} from '../shared/chunks.mjs';
+import {hashDepsPlugin} from './plugins/hash-deps.mjs';
+import {importMapManifestPlugin} from './plugins/import-map-manifest.mjs';
+
+const stableFileName = new RegExp(
+  `^(assets/)?(${[...ALIASED].join('|')})\\.js$`,
+);
+
+export default {
+  root: appDir,
+  base: '/',
+  logLevel: 'warn',
+  plugins: [
+    importMapManifestPlugin({aliased: ALIASED}),
+    // The hash gap fix. Not part of what we run today; see README.
+    process.env.FIX === '1' && hashDepsPlugin(),
+  ].filter(Boolean),
+  build: {
+    outDir: resolveOutDir(import.meta.dirname),
+    emptyOutDir: true,
+    minify: true,
+    sourcemap: 'hidden',
+    modulePreload: {
+      // The stable file does not exist after the rename, and the import map
+      // does not apply to a <link rel="modulepreload"> URL.
+      resolveDependencies: (_url, deps) =>
+        deps.filter((dep) => !stableFileName.test(dep)),
+    },
+    rolldownOptions: {
+      input: {main: path.join(appDir, 'main.js')},
+      output: {
+        hashCharacters: 'hex',
+        // Importers reference the aliased chunks' exports by name across builds.
+        minifyInternalExports: false,
+        // The aliased chunks get names without a hash. A plugin hashes and
+        // renames them after the build.
+        chunkFileNames: (chunk) =>
+          ALIASED.has(chunk.name)
+            ? `${chunk.name}.js`
+            : `${chunk.name}-[hash:12].js`,
+        entryFileNames: (chunk) =>
+          ALIASED.has(chunk.name)
+            ? `assets/${chunk.name}.js`
+            : `assets/${chunk.name}-[hash:12].js`,
+        codeSplitting,
+        ...(process.env.FIX === '1' && {comments: {legal: true}}),
+      },
+    },
+  },
+};

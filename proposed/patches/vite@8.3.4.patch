@@ -1,0 +1,14 @@
+diff --git a/dist/node/chunks/node.js b/dist/node/chunks/node.js
+index 121ef458164ab3687690f0e6d14c23ffe4c5d4a3..8992ebbf98dbba227450071e6efcd5f99b3231c9 100644
+--- a/dist/node/chunks/node.js
++++ b/dist/node/chunks/node.js
+@@ -30190,7 +30190,8 @@ function cssPostPlugin(config) {
+ 				for (const [chunkFileName, referenceId] of chunkCssReferences) {
+ 					const chunk = chunksByPreliminaryFileName.get(chunkFileName);
+ 					if (!chunk) continue;
+-					const stableChunkFileName = importMapReverseMapping[chunk.fileName] ?? chunk.fileName;
++					const stableChunkFileName = importMapReverseMapping[chunk.fileName];
++					if (stableChunkFileName === void 0) continue;
+ 					const extension = path.posix.extname(stableChunkFileName);
+ 					const stableCssFileName = `${stableChunkFileName.slice(0, extension ? -extension.length : void 0)}.css`;
+ 					importMap.content.imports[config.base + stableCssFileName] = config.base + this.getFileName(referenceId);
