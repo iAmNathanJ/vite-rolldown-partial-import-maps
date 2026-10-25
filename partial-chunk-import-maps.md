@@ -201,3 +201,44 @@ build: {
   },
 },
 ```
+
+## Alternative: write preload lists before hashing
+
+<details>
+<summary>The hashing rule compensates for a post-hash write. The write itself could move.</summary>
+
+The hash gap exists because Vite writes `__vite__mapDeps` in `generateBundle`, after hashing, with final file names. The content of the list is not the problem. The timing is.
+
+### The alternative
+
+During `renderChunk`, each chunk has a preliminary file name with a hash placeholder, and `meta.chunks[x].imports` lists other chunks by those placeholder names. If Vite wrote `__vite__mapDeps` in `renderChunk` with placeholder names, the bundler would do the rest:
+
+- It resolves the placeholders to final names after hashing. This is how `import './dep.js'` statements work today.
+- Each placeholder in the code is an edge in the hash graph. `page` would depend on `vendor` because the placeholder of `vendor` is in its bytes.
+
+The gap then closes for all builds, not only for builds with an import map. A chunk with a hand-given unhashed name has the same gap today.
+
+### Effect on this proposal
+
+The stock chunk import map plugin runs in `renderChunk`, pinned last, and replaces the placeholders of all chunks in its table with stable hashes. With `include`, the table holds the included chunks only. The existing filter in the plugin then does the rest:
+
+- placeholders of mapped chunks become stable hashes, so they add no edges, as today;
+- placeholders of unmapped chunks stay, so they add edges and resolve to final hashes, as today;
+- the import map lists the included chunks only, because the table holds nothing else.
+
+Placeholders that Vite writes into `__vite__mapDeps` before the plugin runs go through the same filter. The Rolldown change becomes the `include` option and a filter when the plugin builds its table. The hashing rule, the collapse of edges through mapped chunks, and the move of substitution into `finalize_assets` are not needed. The `vite:css-post` change and the stable name identity of #11277 are needed in both designs.
+
+### The obstacle
+
+`renderChunk` runs for all chunks concurrently. The JavaScript half of a preload list is available from the start, through `meta.chunks`. The CSS half (`viteMetadata.importedCss`) is produced by `vite:css-post` in its own `renderChunk` for the other chunk, which may not have run yet. Three ways to get the CSS half:
+
+1. Wait inside `renderChunk` for the metadata of the chunks in the list. Our manifest plugin does this today for its CSS augmentation. It works, and it is not simple.
+2. A Rolldown hook that runs once after all `renderChunk` calls and before hashing, with the code of all chunks available. This hook does not exist today.
+3. Rolldown writes the preload lists itself, as a builtin plugin. Rolldown has the chunk graph before it renders, so it can write placeholder lists without a wait. Rolldown already has builtin versions of several Vite plugins.
+
+### Other approaches
+
+- **`hoistTransitiveImports`.** Rollup makes the target of a dynamic import statically import its transitive closure, so the browser fetches the closure in parallel after it has the target. The imports are written before hashing, so the hash graph covers them. This costs one more network hop than a preload list and does not cover CSS. Rolldown declares the option and does not implement it.
+- **A dependency manifest outside the chunks.** Emit `chunk → static closure` as an asset, inline it next to the import map, and look it up at run time in the preload helper. No chunk then contains anything about its transitive closure. The manifest grows with the number of edges in the graph, and each dynamic import does a lookup.
+
+</details>
