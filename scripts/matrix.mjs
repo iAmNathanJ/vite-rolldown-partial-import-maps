@@ -1,10 +1,8 @@
 // Builds the application twice per scenario (before and after one change) and
 // compares the two outputs.
 //
-//   node scripts/matrix.mjs                 # all variants that are installed
-//   node scripts/matrix.mjs current proposed
-//
-// Variants: current, current-fixed (current with FIX=1), proposed.
+//   node scripts/matrix.mjs                 # both variants, if installed
+//   node scripts/matrix.mjs current
 import {execFileSync} from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -13,9 +11,8 @@ const root = path.resolve(import.meta.dirname, '..');
 const tmp = path.join(root, '.tmp');
 
 const VARIANTS = {
-  current: {dir: 'current', env: {}},
-  'current-fixed': {dir: 'current', env: {FIX: '1'}},
-  proposed: {dir: 'proposed', env: {}},
+  current: {dir: 'current'},
+  proposed: {dir: 'proposed'},
 };
 
 // Each scenario replaces one file of app/ between the two builds.
@@ -25,22 +22,14 @@ const SCENARIOS = [
     files: {
       'common.js': `import './common.css';\n\nexport function format(text) {\n  return \`[APP] \${text}\`;\n}\n`,
     },
-    expect: {
-      current: 'same name, different bytes',
-      'current-fixed': 'new name',
-      proposed: 'new name',
-    },
+    expect: 'new name',
   },
   {
     label: '`vendor` changes',
     files: {
       'vendor.js': `export function upper(text) {\n  return \`\${text.toUpperCase()}!\`;\n}\n`,
     },
-    expect: {
-      current: 'same name, different bytes',
-      'current-fixed': 'new name',
-      proposed: 'new name',
-    },
+    expect: 'new name',
   },
   {
     label:
@@ -48,49 +37,33 @@ const SCENARIOS = [
     files: {
       'settings.js': `export const defaults = {theme: 'dark', density: 'comfortable'};\n`,
     },
-    expect: {
-      current: 'same name, different bytes',
-      'current-fixed': 'new name',
-      proposed: 'new name',
-    },
+    expect: 'new name',
   },
   {
     label: '`common` body changes, same imports',
     files: {
       'common.js': `import './common.css';\nimport {upper} from './vendor.js';\n\nexport function format(text) {\n  return \`[\${upper('app')}] \${text}.\`;\n}\n`,
     },
-    expect: {
-      current: 'same name, same bytes',
-      'current-fixed': 'same name, same bytes',
-      proposed: 'same name, same bytes',
-    },
+    expect: 'same name, same bytes',
   },
   {
     label: '`slice` body changes, same imports',
     files: {
       'slice.js': `import './slice.css';\nimport {defaults} from './settings.js';\n\nexport function settings() {\n  return \`settings => \${JSON.stringify(defaults)}\`;\n}\n`,
     },
-    expect: {
-      current: 'same name, same bytes',
-      'current-fixed': 'same name, same bytes',
-      proposed: 'same name, same bytes',
-    },
+    expect: 'same name, same bytes',
   },
   {
     label: '`util` changes (behind the hashed `editor`)',
     files: {
       'util.js': `export function clamp(n, lo, hi) {\n  return Math.min(hi, Math.max(lo, n)) | 0;\n}\n`,
     },
-    expect: {
-      current: 'new name',
-      'current-fixed': 'new name',
-      proposed: 'new name',
-    },
+    expect: 'new name',
   },
 ];
 
 function build(variant, files, outName) {
-  const {dir, env} = VARIANTS[variant];
+  const {dir} = VARIANTS[variant];
   const appDir = path.join(tmp, `app-${variant}`);
   fs.rmSync(appDir, {recursive: true, force: true});
   fs.cpSync(path.join(root, 'app'), appDir, {recursive: true});
@@ -104,7 +77,7 @@ function build(variant, files, outName) {
     ['node_modules/vite/bin/vite.js', 'build', '-c', 'vite.config.mjs'],
     {
       cwd: path.join(root, dir),
-      env: {...process.env, ...env, APP_DIR: appDir, OUT_DIR: outDir},
+      env: {...process.env, APP_DIR: appDir, OUT_DIR: outDir},
       stdio: ['ignore', 'ignore', 'inherit'],
     },
   );
@@ -162,7 +135,7 @@ for (const variant of variants) {
   }
   results[variant] = SCENARIOS.map((scenario) => {
     const result = compare(base, build(variant, scenario.files, 'changed'));
-    const ok = result.page === scenario.expect[variant];
+    const ok = result.page === scenario.expect && result.collisions.length === 0;
     if (!ok) failures++;
     return {...result, ok};
   });
@@ -175,18 +148,17 @@ const header = [
 const rows = SCENARIOS.map((scenario, i) => [
   scenario.label,
   ...variants.map((variant) => {
-    const {page, collisions, ok} = results[variant][i];
-    const cell = collisions.length
-      ? `**${page}** (${collisions.length} file${collisions.length > 1 ? 's' : ''})`
-      : page;
-    return ok ? cell : `${cell} ✗ expected: ${scenario.expect[variant]}`;
+    const {page, renamed, collisions, ok} = results[variant][i];
+    let cell = `${page}; ${renamed} file${renamed === 1 ? '' : 's'} renamed`;
+    if (collisions.length) cell = `**${cell}; ${collisions.length} same name, different bytes**`;
+    return ok ? cell : `${cell} ✗ expected: ${scenario.expect}`;
   }),
 ]);
 console.log(`| ${header.join(' | ')} |`);
 console.log(`| ${header.map(() => '---').join(' | ')} |`);
 for (const row of rows) console.log(`| ${row.join(' | ')} |`);
 console.log(
-  `\nEach cell is the result for the \`page\` chunk, the importer whose preload lists change. ` +
-    `A file count is the number of files in the whole output with the same name and different bytes.`,
+  `\nEach cell gives the result for the \`page\` chunk, the importer whose preload lists change, ` +
+    `and the number of files in the whole output that got a new name.`,
 );
 process.exit(failures ? 1 : 0);

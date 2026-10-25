@@ -21,9 +21,9 @@ export function resolveOutDir(configDir) {
 const SEPARATE = new Set(['page', 'common', 'vendor', 'util', 'settings']);
 
 function chunkName(id) {
-  if (!id.startsWith(`${appDir}${path.sep}`) || !id.endsWith('.js'))
-    return null;
-  const name = path.basename(id, '.js');
+  if (!id.startsWith(`${appDir}${path.sep}`)) return null;
+  // A CSS import is a module too. Keep it with the module that imports it.
+  const name = path.basename(id).replace(/\.(js|css)$/, '');
   return SEPARATE.has(name) ? name : null;
 }
 

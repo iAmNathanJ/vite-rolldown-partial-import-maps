@@ -1,4 +1,5 @@
-// How we alias a subset of chunks today, with stock Vite 8 and stock Rolldown.
+// How we alias a subset of chunks today, in userland: plugins on stock Vite 8
+// and stock Rolldown.
 import path from 'node:path';
 
 import {
@@ -20,9 +21,8 @@ export default {
   logLevel: 'warn',
   plugins: [
     importMapManifestPlugin({aliased: ALIASED}),
-    // The hash gap fix. Not part of what we run today; see README.
-    process.env.FIX === '1' && hashDepsPlugin(),
-  ].filter(Boolean),
+    hashDepsPlugin(),
+  ],
   build: {
     outDir: resolveOutDir(import.meta.dirname),
     emptyOutDir: true,
@@ -51,7 +51,8 @@ export default {
             ? `assets/${chunk.name}.js`
             : `assets/${chunk.name}-[hash:12].js`,
         codeSplitting,
-        ...(process.env.FIX === '1' && {comments: {legal: true}}),
+        // hash-deps.mjs relies on legal comments surviving minification.
+        comments: {legal: true},
       },
     },
   },

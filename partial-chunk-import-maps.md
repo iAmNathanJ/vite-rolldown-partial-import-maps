@@ -36,12 +36,13 @@ We alias a small set of chunks: the runtime, shared vendor code, the router, and
 
 ### How we alias a subset today
 
-Rolldown has no option to alias a subset. We do it with plugins:
+Rolldown has no option to alias a subset. We do it in userland, with configuration and plugins:
 
 - `chunkFileNames` gives the selected chunks names without a hash, for example `common.js`.
 - After the build, a plugin hashes the content of these files, renames them to `common-<hash>.js`, and writes the import map and integrity hashes to a manifest. The server inlines the manifest.
 - `modulePreload.resolveDependencies` removes the unhashed chunks from preload lists. The unhashed file does not exist after the rename, and the import map does not apply to a `<link rel="modulepreload">` URL.
 - `augmentChunkHash` adds the CSS behind the unhashed chunks to the hashes of their importers. Rolldown calls `renderChunk` for all chunks concurrently, so the plugin must wait for the metadata of each chunk's import tree before it computes the augmentation.
+- A second `augmentChunkHash` plugin adds the JavaScript behind the unhashed chunks to the hashes of their importers. The next section explains why.
 - `minifyInternalExports: false`, so the export names of the unhashed chunks do not change when their content changes.
 
 ### The hash gap
@@ -57,16 +58,19 @@ Example: `page → import('./editor') → common (unhashed) → vendor`.
 When `vendor` changes, the bytes of `page` change but its file name does not. The CDN continues to serve the old file.
 
 ```diff
- // page-ede086a1b085.js, before and after `common` stops importing `vendor`
- const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["editor-138953dae218.js",
+ // page-370856d843c0.js, before and after `common` stops importing `vendor`,
+ // without the JavaScript augmentation
+ const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["editor-219ec73e51be.js",
 -"vendor-5af16780cc6c.js",
- "util-e112b1dd33ed.js","assets/main-3012a5fd.css","assets/editor-cc02449e.css",
+ "util-e112b1dd33ed.js","assets/common-3012a5fd.css","assets/editor-cc02449e.css",
  "settings-769cee2becd6.js","assets/slice-1ee31b2a.css"])))=>i.map(i=>d[i]);
 ```
 
 Rollup hides this gap in most cases. Its `hoistTransitiveImports` option (default `true`) adds `import "./dep-<hash>.js"` for each transitive static import of a dynamic import target, so the target has placeholders for the chunks behind the unhashed chunk. Rolldown declares `hoistTransitiveImports` but does not implement it. One case shows on Rollup too: a hashed chunk that dynamically imports an unhashed chunk directly.
 
-We can close the gap with more `augmentChunkHash` code in our plugins. We think the bundler is the correct place for the rule, because the bundler owns the hash graph.
+Our plugin closes the gap from outside the bundler. For each hashed chunk, it appends a legal comment that names, for each unhashed chunk it imports, the hashed chunks reached from there through unhashed chunks only. The names contain hash placeholders. Legal comments survive minification, so the bundler sees the placeholders when it hashes. The plugin removes the comment in `generateBundle`, when hashes are final.
+
+This works, and it depends on two bundler internals: the placeholder format, and legal comments staying in place through minification. We think the bundler is the correct place for the rule, because the bundler owns the hash graph.
 
 ## Hashing rule
 
@@ -108,31 +112,24 @@ For aliased chunks, the CSS alias is correct. CSS assets are not placeholders, s
 
 ### Reduced test case
 
-Eight modules, three aliased, built with Vite 8.3.4, minified, hidden sourcemaps. Each row changes one module between two builds and compares the `page` chunk, the importer whose preload lists change. The repository also runs the hand-made fix (`FIX=1`), which gives the same results as the proposal.
+The repository builds one application in two configurations: our userland setup (`current/`) and the proposal (`proposed/`). Eight modules, three aliased, Vite 8.3.4, minified, hidden sourcemaps. Each row changes one module between two builds and compares the `page` chunk, the importer whose preload lists change. Both configurations give the same result in each row:
 
-| change                                                      | hand-rolled subset on stock Rolldown | this proposal         |
-| ----------------------------------------------------------- | ------------------------------------ | --------------------- |
-| `common` stops importing `vendor`                           | **same name, different bytes**       | new name              |
-| `vendor` changes                                            | **same name, different bytes**       | new name              |
-| `settings` changes (behind the dynamically imported, aliased `slice`) | **same name, different bytes** | new name              |
-| `common` body changes, same imports                         | same name, same bytes                | same name, same bytes |
-| `slice` body changes, same imports                          | same name, same bytes                | same name, same bytes |
-| `util` changes (behind the hashed `editor`)                 | new name                             | new name              |
+| change                                                                | result                                |
+| --------------------------------------------------------------------- | ------------------------------------- |
+| `common` stops importing `vendor`                                     | new name; 5 files renamed             |
+| `vendor` changes                                                      | new name; 5 files renamed             |
+| `settings` changes (behind the dynamically imported, aliased `slice`) | new name; 4 files renamed             |
+| `common` body changes, same imports                                   | same name, same bytes; 1 file renamed |
+| `slice` body changes, same imports                                    | same name, same bytes; 1 file renamed |
+| `util` changes (behind the hashed `editor`)                           | new name; 4 files renamed             |
 
-Builds are byte-for-byte identical across runs. Vite writes the alias into `__vite__mapDeps`, and its preload helper resolves the alias with `import.meta.resolve`. Preload lists need no rewrite and no filter.
+The first three rows are changes behind an aliased chunk: `page` gets a new name because its preload lists change. The next two rows are changes inside an aliased chunk: `page` keeps its name, and only the aliased chunk's file and the import map change. Two builds of the same input are byte-for-byte identical in both configurations.
+
+The difference is in what each configuration needs. The userland configuration needs unhashed names, the rename plugin, the preload filter, the two `augmentChunkHash` plugins, and `comments: {legal: true}`. The proposal needs `include` and the Vite change. Both need `minifyInternalExports: false` and a server that inlines the import map.
 
 ### Production application
 
-A one-line change in a module reached only through an aliased chunk:
-
-|                                      | renamed files | byte-identical renames | same name, different bytes |
-| ------------------------------------ | ------------- | ---------------------- | -------------------------- |
-| hand-rolled subset on stock Rolldown | _n_           | 0                      | **1**                      |
-| this proposal                        | _n_ + 4       | 0                      | **0**                      |
-
-The four extra renames are the chunks whose preload lists name the changed module through an aliased chunk. Their bytes changed, so their names must change. Alias keys are identical across builds. Build time is unchanged with a release build of Rolldown.
-
-With the proposal and with the plugins removed, the output is byte-identical to the stock output for all chunks, after normalization of the names the proposal changes: hashes in file names and references, the alias form of the shared chunks, and the alias entries in preload lists.
+We built our application with the proposal and with our plugins removed, and compared the output with the output of our userland configuration. The chunk graph is the same: each chunk has the same module set. After normalization of the names the proposal changes (hashes in file names and references, the alias form of the shared chunks, and the alias entries in preload lists), all chunks are byte-identical. Alias keys are identical across builds. Build time is unchanged with a release build of Rolldown.
 
 Served from a production-mode server with the import map inlined: each script and stylesheet loads. No request names an alias; the browser fetches content-hashed files only. Aliased chunks named in preload lists load once each as `modulepreload` before the dynamic import that needs them. There are no preload, integrity, or CSP errors.
 
@@ -171,7 +168,7 @@ With the proposal, our build no longer needs:
 
 - unhashed `chunkFileNames` for the shared chunks;
 - post-build hashing and renaming of those chunks, and hand-built import-map construction (`importmap.json` replaces it);
-- `augmentChunkHash` for CSS or JavaScript behind the shared chunks;
+- the two `augmentChunkHash` plugins, and `comments: {legal: true}`;
 - the `modulePreload.resolveDependencies` filter. Vite writes the alias into `__vite__mapDeps` and resolves it with `import.meta.resolve` before it creates the link, so the link has the content-hashed URL. A build-time URL would make the importer's bytes depend on the aliased chunk's content again.
 
 We still inline the import map and integrity hashes into the document.

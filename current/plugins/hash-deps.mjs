@@ -1,4 +1,4 @@
-// The JavaScript half of the hash gap, closed by hand. Enabled with FIX=1.
+// The JavaScript half of the hash gap (see the write-up), closed in userland.
 //
 // Rolldown renders `!~{<id>}~` where a chunk's hash will go, and a chunk's final
 // hash covers each chunk whose placeholder appears in its rendered code. The
@@ -11,6 +11,9 @@
 // aliased chunks only. Legal comments survive minification, so the bundler
 // sees the placeholders when it hashes. The comment is removed in
 // generateBundle, when hashes are final.
+//
+// This depends on two bundler internals: the placeholder format, and legal
+// comments staying in place through minification.
 const PLACEHOLDER = /!~\{[\w$]+\}~/;
 const MARKER_START = '/*! hash-deps:';
 const MARKER_END = ' */';
