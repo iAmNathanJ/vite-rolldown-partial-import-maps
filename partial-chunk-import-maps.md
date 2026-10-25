@@ -238,7 +238,7 @@ Placeholders that Vite writes into `__vite__mapDeps` before the plugin runs go t
 
 ### Other approaches
 
-- **`hoistTransitiveImports`.** Rollup makes the target of a dynamic import statically import its transitive closure, so the browser fetches the closure in parallel after it has the target. The imports are written before hashing, so the hash graph covers them. This costs one more network hop than a preload list and does not cover CSS. Rolldown declares the option and does not implement it.
+- **`hoistTransitiveImports`.** Rollup makes an entry chunk, including a dynamic import target, statically import its transitive closure, so the browser fetches the closure in parallel after it has the target. The imports are written before hashing, so the hash graph covers them. This is why the gap is rare on Rollup, but it is not a fix: the hoisted imports are inside the target, so when the target is a mapped chunk its importer's hash still does not cover them (the third row of the test case collides on Rollup too), and CSS names are not imports. It also costs one more network hop than a preload list. Rolldown declares the option and does not implement it.
 - **A dependency manifest outside the chunks.** Emit `chunk → static closure` as an asset, inline it next to the import map, and look it up at run time in the preload helper. No chunk then contains anything about its transitive closure. The manifest grows with the number of edges in the graph, and each dynamic import does a lookup.
 
 </details>
