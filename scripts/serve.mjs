@@ -25,27 +25,35 @@ const integrityOf = (file) =>
     .digest('base64')}`;
 
 function importMapAndEntry() {
+  let importMap;
+  let entryFile;
   if (variant === 'current') {
     // The plugin wrote the import map, integrity hashes, and the renamed entry.
     const manifest = JSON.parse(
       fs.readFileSync(path.join(dist, 'manifest.json'), 'utf8'),
     );
-    return {importMap: manifest.importMap, entry: manifest.entry};
+    importMap = manifest.importMap;
+    entryFile = manifest.entry;
+  } else {
+    // Rolldown wrote the import map. Integrity comes from the files on disk.
+    const {imports} = JSON.parse(
+      fs.readFileSync(path.join(dist, 'importmap.json'), 'utf8'),
+    );
+    const integrity = Object.fromEntries(
+      Object.values(imports).map((url) => [url, integrityOf(url.slice(1))]),
+    );
+    const viteManifest = JSON.parse(
+      fs.readFileSync(path.join(dist, '.vite/manifest.json'), 'utf8'),
+    );
+    importMap = {imports, integrity};
+    entryFile = `/${viteManifest['main.js'].file}`;
   }
-  // Rolldown wrote the import map. Integrity comes from the files on disk.
-  const {imports} = JSON.parse(
-    fs.readFileSync(path.join(dist, 'importmap.json'), 'utf8'),
+  // The document imports the entry by its alias. The import map is the only
+  // place in the document where a content hash appears.
+  const entry = Object.keys(importMap.imports).find(
+    (alias) => importMap.imports[alias] === entryFile,
   );
-  const integrity = Object.fromEntries(
-    Object.values(imports).map((url) => [url, integrityOf(url.slice(1))]),
-  );
-  const viteManifest = JSON.parse(
-    fs.readFileSync(path.join(dist, '.vite/manifest.json'), 'utf8'),
-  );
-  return {
-    importMap: {imports, integrity},
-    entry: `/${viteManifest['main.js'].file}`,
-  };
+  return {importMap, entry};
 }
 
 function html() {
@@ -56,7 +64,10 @@ function html() {
       '<!--IMPORTMAP-->',
       `<script type="importmap">\n${JSON.stringify(importMap, null, 2)}\n    </script>`,
     )
-    .replace('<!--ENTRY-->', `<script type="module" src="${entry}"></script>`);
+    .replace(
+      '<!--ENTRY-->',
+      `<script type="module">\n      import '${entry}';\n    </script>`,
+    );
 }
 
 const TYPES = {
