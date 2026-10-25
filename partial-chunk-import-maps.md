@@ -18,11 +18,11 @@ experimental: {
 },
 ```
 
-A chunk for which `include` returns `true` gets a stable alias. Importers reference it by alias, and the import map points the alias to the content-hashed file. All other chunks keep content-hashed names, and importers reference them by name. When `include` is not set, all chunks get an alias, as today.
+A chunk for which `include` returns `true` gets a stable name. Importers reference it by that name, and the import map points the stable name to the content-hashed file. All other chunks keep content-hashed names, and importers reference them by name. When `include` is not set, all chunks get a stable name, as today.
 
-An aliased chunk does not add its own content to the hash of its importers. It does add the hashed chunks that its static imports reach, through any chain of aliased chunks. This rule keeps file names correct when a tool writes dependency names into a chunk after hashing. Vite's module preload lists are one such tool.
+A mapped chunk (a chunk with a stable name) does not add its own content to the hash of its importers. It does add the hashed chunks that its static imports reach, through any chain of mapped chunks. This rule keeps file names correct when a tool writes dependency names into a chunk after hashing. Vite's module preload lists are one such tool.
 
-Vite's `vite:css-post` plugin must alias the CSS of aliased chunks only.
+Vite's `vite:css-post` plugin must give a stable name to the CSS of mapped chunks only.
 
 ## Our need
 
@@ -30,13 +30,13 @@ We build a single-page application with Vite. The build makes thousands of JavaS
 
 A chunk's file name is a hash of its content and of the chunks it imports, because its code contains their file names. A change in a module that many chunks import renames those chunks, then their importers, and so on. Users download files whose only change is a file name inside them.
 
-An import map stops this. Importers reference a shared chunk by a stable alias. A change in the shared chunk then changes only that file and the import map. We inline the import map in the HTML document, which is not cached.
+An import map stops this. Importers reference a shared chunk by a stable name. A change in the shared chunk then changes only that file and the import map. We inline the import map in the HTML document, which is not cached.
 
-We alias a small set of chunks: the runtime, shared vendor code, the router, and some application-wide chunks. Most import paths go through these chunks. Rolldown's `chunkImportMap` aliases all chunks. An import map with an entry for each of our chunks is too large for us to inline in each HTML document.
+We give a small set of chunks stable names: the runtime, shared vendor code, the router, and some application-wide chunks. Most import paths go through these chunks. Rolldown's `chunkImportMap` gives all chunks stable names. An import map with an entry for each of our chunks is too large for us to inline in each HTML document.
 
-### How we alias a subset today
+### How we map a subset today
 
-Rolldown has no option to alias a subset. We do it in userland, with configuration and plugins:
+Rolldown has no option to map a subset. We do it in userland, with configuration and plugins:
 
 - `chunkFileNames` gives the selected chunks names without a hash, for example `common.js`.
 - After the build, a plugin hashes the content of these files, renames them to `common-<hash>.js`, and writes the import map and integrity hashes to a manifest. The server inlines the manifest.
@@ -76,25 +76,25 @@ This works, and it depends on two bundler internals: the placeholder format, and
 
 Rolldown hashes chunks as Rollup does. Each chunk is rendered with placeholders for its own name and for the names of the chunks it references. The standalone hash of a chunk is a hash of its content with placeholders normalized, plus `augmentChunkHash` output. The final hash of a chunk is its standalone hash plus the standalone hashes of the chunks its placeholders reach, transitively.
 
-Today's `chunkImportMap` plugin replaces all placeholders with aliases in a `renderChunk` hook before hashing. No placeholder remains, so the dependency graph is empty and each name depends on that chunk's bytes only. This cannot apply to a subset without a new rule.
+Today's `chunkImportMap` plugin replaces all placeholders with stable names in a `renderChunk` hook before hashing. No placeholder remains, so the dependency graph is empty and each name depends on that chunk's bytes only. This cannot apply to a subset without a new rule.
 
-The rule: read the dependency graph from the original placeholders. Replace each edge to an aliased chunk with edges to the hashed chunks that its static imports reach. Then compute final hashes as before. The aliased chunk's own file still gets a content hash, and the import map points to it. When all chunks are aliased, no edges remain and the result is the same as today.
+The rule: read the dependency graph from the original placeholders. Replace each edge to a mapped chunk with edges to the hashed chunks that its static imports reach. Then compute final hashes as before. The mapped chunk's own file still gets a content hash, and the import map points to it. When all chunks are mapped, no edges remain and the result is the same as today.
 
 ### Why static imports
 
-The rule follows the static imports of an aliased chunk, not its dynamic imports. A shared chunk in our application dynamically imports a large part of the application. If importers inherited the dynamic imports, a change anywhere in that part would rename each importer of the shared chunk with its bytes unchanged. In our build, this renamed a large part of the output with no byte change.
+The rule follows the static imports of a mapped chunk, not its dynamic imports. A shared chunk in our application dynamically imports a large part of the application. If importers inherited the dynamic imports, a change anywhere in that part would rename each importer of the shared chunk with its bytes unchanged. In our build, this renamed a large part of the output with no byte change.
 
-The static imports of a chunk are the chunks that must load before it runs. Tools that write "what this chunk needs" into other chunks use this set: Rollup's `hoistTransitiveImports`, module preload lists, `<link rel="modulepreload">` injection, early hints, and asset manifests. A chunk resolves its dynamic imports itself, at run time, from its own content. Those names do not appear in importers. So the static closure is the set of names behind an alias that can appear in an importer's bytes, and it is the set the importer's hash must cover.
+The static imports of a chunk are the chunks that must load before it runs. Tools that write "what this chunk needs" into other chunks use this set: Rollup's `hoistTransitiveImports`, module preload lists, `<link rel="modulepreload">` injection, early hints, and asset manifests. A chunk resolves its dynamic imports itself, at run time, from its own content. Those names do not appear in importers. So the static closure is the set of names behind a stable name that can appear in an importer's bytes, and it is the set the importer's hash must cover.
 
-### Alias identity
+### Stable name identity
 
-An alias is the chunk's preliminary file name with the hash slot filled by an identity hash of the same width: `common-!~{003}~.js` becomes `common-5f5f2b1ff4d0.js`. Same width keeps sourcemaps correct, because substitution happens after sourcemap generation.
+A stable name is the chunk's preliminary file name with the hash slot filled by an identity hash of the same width: `common-!~{003}~.js` becomes `common-5f5f2b1ff4d0.js`. Same width keeps sourcemaps correct, because substitution happens after sourcemap generation.
 
 The identity is a hash of `(is_path, id)`. For an entry chunk, `id` is the facade module id, made relative to `cwd` when it is a filesystem path. For a named common chunk, `id` is the chunk name. A later common chunk with the same name uses the smallest key among its original members. This is the scheme of [rolldown/rolldown#11277](https://github.com/rolldown/rolldown/pull/11277), the fix for [#11279](https://github.com/rolldown/rolldown/issues/11279). If #11277 merges first, this part of the change is removed.
 
 ## Vite change
 
-`vite:css-post` adds an import-map entry for each chunk's CSS when `build.chunkImportMap` is on. When the chunk has no alias, it falls back to the chunk's real file name. With a subset aliased, the fallback makes an entry for each chunk with CSS and writes alias-shaped CSS names into preload lists. The fix skips chunks without an alias:
+`vite:css-post` adds an import-map entry for each chunk's CSS when `build.chunkImportMap` is on. When the chunk has no stable name, it falls back to the chunk's real file name. With a subset mapped, the fallback makes an entry for each chunk with CSS and writes stable-name-shaped CSS names into preload lists. The fix skips chunks without a stable name:
 
 ```diff
  for (const [chunkFileName, referenceId] of chunkCssReferences) {
@@ -106,32 +106,32 @@ The identity is a hash of `(is_path, id)`. For an entry chunk, `id` is the facad
    const extension = path.posix.extname(stableChunkFileName)
 ```
 
-For aliased chunks, the CSS alias is correct. CSS assets are not placeholders, so the hashing rule does not cover them. The CSS alias ties the CSS name to the chunk identity and the import map resolves it. When all chunks are aliased, the change has no effect.
+For mapped chunks, the stable CSS name is correct. CSS assets are not placeholders, so the hashing rule does not cover them. The stable CSS name ties the CSS to the chunk identity and the import map resolves it. When all chunks are mapped, the change has no effect.
 
 ## Results
 
 ### Reduced test case
 
-The repository builds one application in two configurations: our userland setup (`current/`) and the proposal (`proposed/`). Eight modules, three aliased, Vite 8.3.4, minified, hidden sourcemaps. Each row changes one module between two builds and compares the `page` chunk, the importer whose preload lists change. Both configurations give the same result in each row:
+The repository builds one application in two configurations: our userland setup (`current/`) and the proposal (`proposed/`). Eight modules, three mapped, Vite 8.3.4, minified, hidden sourcemaps. Each row changes one module between two builds and compares the `page` chunk, the importer whose preload lists change. Both configurations give the same result in each row:
 
 | change                                                                | result                                |
 | --------------------------------------------------------------------- | ------------------------------------- |
 | `common` stops importing `vendor`                                     | new name; 5 files renamed             |
 | `vendor` changes                                                      | new name; 5 files renamed             |
-| `settings` changes (behind the dynamically imported, aliased `slice`) | new name; 4 files renamed             |
+| `settings` changes (behind the dynamically imported, mapped `slice`) | new name; 4 files renamed             |
 | `common` body changes, same imports                                   | same name, same bytes; 1 file renamed |
 | `slice` body changes, same imports                                    | same name, same bytes; 1 file renamed |
 | `util` changes (behind the hashed `editor`)                           | new name; 4 files renamed             |
 
-The first three rows are changes behind an aliased chunk: `page` gets a new name because its preload lists change. The next two rows are changes inside an aliased chunk: `page` keeps its name, and only the aliased chunk's file and the import map change. Two builds of the same input are byte-for-byte identical in both configurations.
+The first three rows are changes behind a mapped chunk: `page` gets a new name because its preload lists change. The next two rows are changes inside a mapped chunk: `page` keeps its name, and only the mapped chunk's file and the import map change. Two builds of the same input are byte-for-byte identical in both configurations.
 
 The difference is in what each configuration needs. The userland configuration needs unhashed names, the rename plugin, the preload filter, the two `augmentChunkHash` plugins, and `comments: {legal: true}`. The proposal needs `include` and the Vite change. Both need `minifyInternalExports: false` and a server that inlines the import map.
 
 ### Production application
 
-We built our application with the proposal and with our plugins removed, and compared the output with the output of our userland configuration. The chunk graph is the same: each chunk has the same module set. After normalization of the names the proposal changes (hashes in file names and references, the alias form of the shared chunks, and the alias entries in preload lists), all chunks are byte-identical. Alias keys are identical across builds. Build time is unchanged with a release build of Rolldown.
+We built our application with the proposal and with our plugins removed, and compared the output with the output of our userland configuration. The chunk graph is the same: each chunk has the same module set. After normalization of the names the proposal changes (hashes in file names and references, the stable-name form of the shared chunks, and the stable-name entries in preload lists), all chunks are byte-identical. Stable names are identical across builds. Build time is unchanged with a release build of Rolldown.
 
-Served from a production-mode server with the import map inlined: each script and stylesheet loads. No request names an alias; the browser fetches content-hashed files only. Aliased chunks named in preload lists load once each as `modulepreload` before the dynamic import that needs them. There are no preload, integrity, or CSP errors.
+Served from a production-mode server with the import map inlined: each script and stylesheet loads. No request uses a stable name; the browser fetches content-hashed files only. Mapped chunks named in preload lists load once each as `modulepreload` before the dynamic import that needs them. There are no preload, integrity, or CSP errors.
 
 ## Implementation
 
@@ -139,10 +139,10 @@ One commit on `v1.2.14`, about 230 lines without test fixtures:
 
 | file                                                                | change                                                                                                                                                               |
 | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `crates/rolldown_common/.../chunk_import_map.rs`                    | `include: Option<Arc<dyn Fn(&RollupPreRenderedChunk) -> Future<bool>>>`; a shared `aliases` table written during hashing, read when emitting                         |
-| `crates/rolldown/src/utils/chunk/chunk_import_map_aliases.rs` (new) | alias computation; same-width substitution; `static_dependencies_of_aliased` (from `cross_chunk_imports`); `collapse_aliased_dependencies`                           |
-| `crates/rolldown/src/utils/chunk/finalize_chunks.rs`                | read the dependency graph from the original placeholders, substitute aliases, compute standalone hashes, collapse edges through aliased chunks, compute final hashes |
-| `crates/rolldown_plugin_chunk_import_map/src/lib.rs`                | no `renderChunk` rewrite; emits `importmap.json` from the recorded aliases                                                                                           |
+| `crates/rolldown_common/.../chunk_import_map.rs`                    | `include: Option<Arc<dyn Fn(&RollupPreRenderedChunk) -> Future<bool>>>`; a shared `stable_names` table written during hashing, read when emitting                         |
+| `crates/rolldown/src/utils/chunk/chunk_import_map_stable_names.rs` (new) | stable name computation; same-width substitution; `static_dependencies_of_mapped` (from `cross_chunk_imports`); `collapse_mapped_dependencies`                           |
+| `crates/rolldown/src/utils/chunk/finalize_chunks.rs`                | read the dependency graph from the original placeholders, substitute stable names, compute standalone hashes, collapse edges through mapped chunks, compute final hashes |
+| `crates/rolldown_plugin_chunk_import_map/src/lib.rs`                | no `renderChunk` rewrite; emits `importmap.json` from the recorded stable names                                                                                           |
 | `crates/rolldown_binding/...`                                       | `include` as a napi `JsCallback`, the same pattern as `chunkFileNames`                                                                                               |
 | `packages/rolldown/src/...`                                         | TypeScript type, validator, bindingify                                                                                                                               |
 
@@ -152,13 +152,13 @@ A rebase onto current `main` conflicts in the plugin file only. Upstream reworke
 
 `crates/rolldown/tests/rolldown/function/chunk_import_map_include/` builds variants of a six-module graph and compares pairs of outputs:
 
-- the import map lists the included chunks only, alias to content-hashed name;
-- importers reference aliased chunks by alias only, with no placeholder left;
-- a change behind an aliased chunk renames the importer and keeps the aliases;
-- a change to an aliased chunk's own body renames that file and its import map entry only;
-- a change behind a dynamically imported aliased chunk renames the importer;
-- a change to an aliased chunk's dynamic import target renames nothing else;
-- aliases are identical across builds.
+- the import map lists the included chunks only, stable name to content-hashed name;
+- importers reference mapped chunks by stable name only, with no placeholder left;
+- a change behind a mapped chunk renames the importer and keeps the stable names;
+- a change to a mapped chunk's own body renames that file and its import map entry only;
+- a change behind a dynamically imported mapped chunk renames the importer;
+- a change to a mapped chunk's dynamic import target renames nothing else;
+- stable names are identical across builds.
 
 The existing integration suite passes. `cargo fmt` and `cargo clippy` are clean under the repository's lints.
 
@@ -169,15 +169,15 @@ With the proposal, our build no longer needs:
 - unhashed `chunkFileNames` for the shared chunks;
 - post-build hashing and renaming of those chunks, and hand-built import-map construction (`importmap.json` replaces it);
 - the two `augmentChunkHash` plugins, and `comments: {legal: true}`;
-- the `modulePreload.resolveDependencies` filter. Vite writes the alias into `__vite__mapDeps` and resolves it with `import.meta.resolve` before it creates the link, so the link has the content-hashed URL. A build-time URL would make the importer's bytes depend on the aliased chunk's content again.
+- the `modulePreload.resolveDependencies` filter. Vite writes the stable name into `__vite__mapDeps` and resolves it with `import.meta.resolve` before it creates the link, so the link has the content-hashed URL. A build-time URL would make the importer's bytes depend on the mapped chunk's content again.
 
 We still inline the import map and integrity hashes into the document.
 
 ## Open items
 
-- **Export names.** We set `minifyInternalExports: false` for all chunks, because the exports of an aliased chunk must keep their names when its content changes. Rolldown could keep stable export names for aliased chunks only.
-- **Alias template.** The alias keeps the `[name]-<hash>` form for the sourcemap reason above. A `[name].js` form would need padding or sourcemap remapping.
-- **Escape hatch.** An option for aliased chunks to add no dependencies at all, for a build that runs no post-hash tooling.
+- **Export names.** We set `minifyInternalExports: false` for all chunks, because the exports of a mapped chunk must keep their names when its content changes. Rolldown could keep stable export names for mapped chunks only.
+- **Stable name template.** The stable name keeps the `[name]-<hash>` form for the sourcemap reason above. A `[name].js` form would need padding or sourcemap remapping.
+- **Escape hatch.** An option for mapped chunks to add no dependencies at all, for a build that runs no post-hash tooling.
 - **`hoistTransitiveImports`.** Not implemented in Rolldown. It is independent of this proposal.
 
 ## Try it

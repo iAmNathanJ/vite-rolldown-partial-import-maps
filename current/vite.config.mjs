@@ -1,9 +1,9 @@
-// How we alias a subset of chunks today, in userland: plugins on stock Vite 8
+// How we give a subset of chunks stable names today, in userland: plugins on stock Vite 8
 // and stock Rolldown.
 import path from 'node:path';
 
 import {
-  ALIASED,
+  MAPPED,
   appDir,
   codeSplitting,
   resolveOutDir,
@@ -12,7 +12,7 @@ import {hashDepsPlugin} from './plugins/hash-deps.mjs';
 import {importMapManifestPlugin} from './plugins/import-map-manifest.mjs';
 
 const stableFileName = new RegExp(
-  `^(assets/)?(${[...ALIASED].join('|')})\\.js$`,
+  `^(assets/)?(${[...MAPPED].join('|')})\\.js$`,
 );
 
 export default {
@@ -20,7 +20,7 @@ export default {
   base: '/',
   logLevel: 'warn',
   plugins: [
-    importMapManifestPlugin({aliased: ALIASED}),
+    importMapManifestPlugin({mapped: MAPPED}),
     hashDepsPlugin(),
   ],
   build: {
@@ -38,16 +38,16 @@ export default {
       input: {main: path.join(appDir, 'main.js')},
       output: {
         hashCharacters: 'hex',
-        // Importers reference the aliased chunks' exports by name across builds.
+        // Importers reference the mapped chunks' exports by name across builds.
         minifyInternalExports: false,
-        // The aliased chunks get names without a hash. A plugin hashes and
+        // The mapped chunks get names without a hash. A plugin hashes and
         // renames them after the build.
         chunkFileNames: (chunk) =>
-          ALIASED.has(chunk.name)
+          MAPPED.has(chunk.name)
             ? `${chunk.name}.js`
             : `${chunk.name}-[hash:12].js`,
         entryFileNames: (chunk) =>
-          ALIASED.has(chunk.name)
+          MAPPED.has(chunk.name)
             ? `assets/${chunk.name}.js`
             : `assets/${chunk.name}-[hash:12].js`,
         codeSplitting,

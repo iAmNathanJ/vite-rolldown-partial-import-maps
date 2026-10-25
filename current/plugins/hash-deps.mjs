@@ -2,13 +2,13 @@
 //
 // Rolldown renders `!~{<id>}~` where a chunk's hash will go, and a chunk's final
 // hash covers each chunk whose placeholder appears in its rendered code. The
-// aliased chunks have no placeholder, so the hashed chunks behind them are not
+// mapped chunks have no placeholder, so the hashed chunks behind them are not
 // covered in their importers. Vite's __vite__mapDeps names those chunks and is
 // written after hashing.
 //
 // For each hashed chunk, this appends a legal comment that names, for each
-// aliased chunk it imports, the hashed chunks reached from there through
-// aliased chunks only. Legal comments survive minification, so the bundler
+// mapped chunk it imports, the hashed chunks reached from there through
+// mapped chunks only. Legal comments survive minification, so the bundler
 // sees the placeholders when it hashes. The comment is removed in
 // generateBundle, when hashes are final.
 //

@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 /** Chunks that get a stable name in the import map. */
-export const ALIASED = new Set(['main', 'common', 'slice']);
+export const MAPPED = new Set(['main', 'common', 'slice']);
 
 export const appDir = fs.realpathSync(
   process.env.APP_DIR ?? path.resolve(import.meta.dirname, '../app'),

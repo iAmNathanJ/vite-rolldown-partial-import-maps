@@ -33,7 +33,7 @@ const SCENARIOS = [
   },
   {
     label:
-      '`settings` changes (behind the dynamically imported, aliased `slice`)',
+      '`settings` changes (behind the dynamically imported, mapped `slice`)',
     files: {
       'settings.js': `export const defaults = {theme: 'dark', density: 'comfortable'};\n`,
     },

@@ -8,7 +8,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DEST="${ROLLDOWN_DIR:-$ROOT/vendor/rolldown}"
 REPO="https://github.com/iAmNathanJ/rolldown.git"
 BRANCH="feat/chunk-import-map-include"
-COMMIT="a77fcbb0d55c200cd1c9a30c83d41e8301b0904b"
+COMMIT="83ac6ab4eee16be51812bc1617db786acf78eb34"
 PNPM="${PNPM:-pnpm}"
 # The Rolldown repository pins a pnpm version in `packageManager`. Do not let
 # pnpm download and switch to it; any pnpm 10 or later reads the lockfile.

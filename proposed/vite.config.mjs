@@ -1,7 +1,7 @@
-// The same subset aliased by Rolldown, with `experimental.chunkImportMap.include`.
+// The same subset given stable names by Rolldown, with `experimental.chunkImportMap.include`.
 import path from 'node:path';
 
-import {ALIASED, appDir, codeSplitting, resolveOutDir} from '../shared/chunks.mjs';
+import {MAPPED, appDir, codeSplitting, resolveOutDir} from '../shared/chunks.mjs';
 
 export default {
   root: appDir,
@@ -19,12 +19,12 @@ export default {
       experimental: {
         chunkImportMap: {
           fileName: 'importmap.json',
-          include: (chunk) => ALIASED.has(chunk.name),
+          include: (chunk) => MAPPED.has(chunk.name),
         },
       },
       output: {
         hashCharacters: 'hex',
-        // Importers reference the aliased chunks' exports by name across builds.
+        // Importers reference the mapped chunks' exports by name across builds.
         minifyInternalExports: false,
         chunkFileNames: '[name]-[hash:12].js',
         entryFileNames: 'assets/[name]-[hash:12].js',

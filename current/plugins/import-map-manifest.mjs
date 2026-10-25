@@ -1,6 +1,6 @@
 // A reduced version of the manifest plugin we run in production. It has two jobs.
 //
-// 1. renderChunk + augmentChunkHash. The aliased chunks have no hash in their
+// 1. renderChunk + augmentChunkHash. The mapped chunks have no hash in their
 //    file name, so the bundler's hash graph does not cover anything behind them.
 //    Vite's __vite__mapDeps lists the CSS behind them and is written after
 //    hashing. This adds that CSS to each importer's hash.
@@ -9,14 +9,14 @@
 //    each chunk's metadata, then waits until the metadata for the chunk's import
 //    tree exists before it computes the augmentation.
 //
-// 2. writeBundle. Hash the content of the aliased chunks, rename them on disk,
+// 2. writeBundle. Hash the content of the mapped chunks, rename them on disk,
 //    and write the import map and integrity hashes to manifest.json. The server
 //    inlines the import map into the HTML document.
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
-export function importMapManifestPlugin({aliased}) {
+export function importMapManifestPlugin({mapped}) {
   const metadata = new Map(); // fileName -> {importedCss, imports}
   const ready = new Map(); // fileName -> Promise<void>
   const signal = new Map(); // fileName -> resolve
@@ -80,7 +80,7 @@ export function importMapManifestPlugin({aliased}) {
     writeBundle(_options, bundle) {
       const manifest = {entry: null, importMap: {imports: {}, integrity: {}}};
       for (const chunk of Object.values(bundle)) {
-        if (chunk.type !== 'chunk' || !aliased.has(chunk.name)) continue;
+        if (chunk.type !== 'chunk' || !mapped.has(chunk.name)) continue;
 
         const hash = crypto
           .createHash('sha256')

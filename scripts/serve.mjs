@@ -48,10 +48,10 @@ function importMapAndEntry() {
     importMap = {imports, integrity};
     entryFile = `/${viteManifest['main.js'].file}`;
   }
-  // The document imports the entry by its alias. The import map is the only
+  // The document imports the entry by its stable name. The import map is the only
   // place in the document where a content hash appears.
   const entry = Object.keys(importMap.imports).find(
-    (alias) => importMap.imports[alias] === entryFile,
+    (stableName) => importMap.imports[stableName] === entryFile,
   );
   return {importMap, entry};
 }
