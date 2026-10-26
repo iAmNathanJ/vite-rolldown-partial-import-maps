@@ -2,7 +2,7 @@
 
 - **Rolldown change:** https://github.com/iAmNathanJ/rolldown/tree/feat/chunk-import-map-include (one commit).
 - **Vite change:** two lines in `vite:css-post` (see [Vite change](#vite-change)).
-- **Reduced test case:** https://github.com/iAmNathanJ/vite-rolldown-partial-import-maps (both configurations, a build matrix, and a browser demo).
+- **Reduced test case:** https://github.com/iAmNathanJ/vite-rolldown-partial-import-maps (both configurations and a browser demo).
 
 ## Proposal
 
@@ -111,18 +111,7 @@ For mapped chunks, the stable CSS name is correct. CSS assets are not placeholde
 
 ### Reduced test case
 
-The repository builds one application in two configurations: our userland setup (`current/`) and the proposal (`proposed/`). Eight modules, three mapped, Vite 8.3.4, minified, hidden sourcemaps. Each row changes one module between two builds and compares the `page` chunk, the importer whose preload lists change. Both configurations give the same result in each row:
-
-| change                                                                | result                                |
-| --------------------------------------------------------------------- | ------------------------------------- |
-| `common` stops importing `vendor`                                     | new name; 5 files renamed             |
-| `vendor` changes                                                      | new name; 5 files renamed             |
-| `settings` changes (behind the dynamically imported, mapped `slice`) | new name; 4 files renamed             |
-| `common` body changes, same imports                                   | same name, same bytes; 1 file renamed |
-| `slice` body changes, same imports                                    | same name, same bytes; 1 file renamed |
-| `util` changes (behind the hashed `editor`)                           | new name; 4 files renamed             |
-
-The first three rows are changes behind a mapped chunk: `page` gets a new name because its preload lists change. The next two rows are changes inside a mapped chunk: `page` keeps its name, and only the mapped chunk's file and the import map change. Two builds of the same input are byte-for-byte identical in both configurations.
+The repository builds one application in two configurations: our userland setup (`current/`) and the proposal (`proposed/`). Eight modules, three mapped, Vite 8.3.4, minified, hidden sourcemaps. The preload lists of one chunk reach two hashed chunks through mapped chunks only, one of them through a dynamically imported mapped chunk. Both configurations produce the same chunk graph, rename the same files for the same change, and serve the application from a server that inlines the import map.
 
 The difference is in what each configuration needs. The userland configuration needs unhashed names, the rename plugin, the preload filter, the two `augmentChunkHash` plugins, and `comments: {legal: true}`. The proposal needs `include` and the Vite change. Both need `minifyInternalExports: false` and a server that inlines the import map.
 
