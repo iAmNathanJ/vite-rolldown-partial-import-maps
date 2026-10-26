@@ -1,9 +1,8 @@
 # Partial chunk import maps
 
-**Status:** proposal, with a working implementation on Rolldown `v1.2.14`.
-**Rolldown change:** https://github.com/iAmNathanJ/rolldown/tree/feat/chunk-import-map-include (one commit).
-**Vite change:** two lines in `vite:css-post` (see [Vite change](#vite-change)).
-**Reduced test case:** https://github.com/iAmNathanJ/vite-rolldown-partial-import-maps (both configurations, a build matrix, and a browser demo).
+- **Rolldown change:** https://github.com/iAmNathanJ/rolldown/tree/feat/chunk-import-map-include (one commit).
+- **Vite change:** two lines in `vite:css-post` (see [Vite change](#vite-change)).
+- **Reduced test case:** https://github.com/iAmNathanJ/vite-rolldown-partial-import-maps (both configurations, a build matrix, and a browser demo).
 
 ## Proposal
 
