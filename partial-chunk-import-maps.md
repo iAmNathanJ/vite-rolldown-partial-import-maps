@@ -132,35 +132,6 @@ We built our application with the proposal and with our plugins removed, and com
 
 Served from a production-mode server with the import map inlined: each script and stylesheet loads. No request uses a stable name; the browser fetches content-hashed files only. Mapped chunks named in preload lists load once each as `modulepreload` before the dynamic import that needs them. There are no preload, integrity, or CSP errors.
 
-## Implementation
-
-One commit on `v1.2.14`, about 230 lines without test fixtures:
-
-| file                                                                | change                                                                                                                                                               |
-| ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `crates/rolldown_common/.../chunk_import_map.rs`                    | `include: Option<Arc<dyn Fn(&RollupPreRenderedChunk) -> Future<bool>>>`; a shared `stable_names` table written during hashing, read when emitting                         |
-| `crates/rolldown/src/utils/chunk/chunk_import_map_stable_names.rs` (new) | stable name computation; same-width substitution; `static_dependencies_of_mapped` (from `cross_chunk_imports`); `collapse_mapped_dependencies`                           |
-| `crates/rolldown/src/utils/chunk/finalize_chunks.rs`                | read the dependency graph from the original placeholders, substitute stable names, compute standalone hashes, collapse edges through mapped chunks, compute final hashes |
-| `crates/rolldown_plugin_chunk_import_map/src/lib.rs`                | no `renderChunk` rewrite; emits `importmap.json` from the recorded stable names                                                                                           |
-| `crates/rolldown_binding/...`                                       | `include` as a napi `JsCallback`, the same pattern as `chunkFileNames`                                                                                               |
-| `packages/rolldown/src/...`                                         | TypeScript type, validator, bindingify                                                                                                                               |
-
-A rebase onto current `main` conflicts in the plugin file only. Upstream reworked that file for inline common chunks in [#11230](https://github.com/rolldown/rolldown/pull/11230); the equivalent logic now lives in `finalize_assets`.
-
-### Tests
-
-`crates/rolldown/tests/rolldown/function/chunk_import_map_include/` builds variants of a six-module graph and compares pairs of outputs:
-
-- the import map lists the included chunks only, stable name to content-hashed name;
-- importers reference mapped chunks by stable name only, with no placeholder left;
-- a change behind a mapped chunk renames the importer and keeps the stable names;
-- a change to a mapped chunk's own body renames that file and its import map entry only;
-- a change behind a dynamically imported mapped chunk renames the importer;
-- a change to a mapped chunk's dynamic import target renames nothing else;
-- stable names are identical across builds.
-
-The existing integration suite passes. `cargo fmt` and `cargo clippy` are clean under the repository's lints.
-
 ## What we can remove
 
 With the proposal, our build no longer needs:
