@@ -23,9 +23,9 @@ A mapped chunk (a chunk with a stable name) does not add its own content to the 
 
 Vite's `vite:css-post` plugin must give a stable name to the CSS of mapped chunks only.
 
-## Our need
+## Why?
 
-We build a single-page application with Vite. The build makes thousands of JavaScript chunks. We deploy them to a CDN with immutable, content-hashed file names.
+We build a very large single-page application with Vite. The build makes thousands of JavaScript chunks. We deploy them to a CDN with immutable, content-hashed file names.
 
 A chunk's file name is a hash of its content and of the chunks it imports, because its code contains their file names. A change in a module that many chunks import renames those chunks, then their importers, and so on. Users download files whose only change is a file name inside them.
 
